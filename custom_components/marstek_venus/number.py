@@ -8,7 +8,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import DOMAIN
+from .const import DOMAIN, OPT_DOD
 from .coordinator import MarstekCoordinator
 
 
@@ -22,7 +22,11 @@ async def async_setup_entry(
 
 
 class MarstekDODNumber(CoordinatorEntity[MarstekCoordinator], NumberEntity):
-    """Depth of discharge setting. Range 30–88 %; no GET exists on the device API."""
+    """Depth of discharge setting (30–88 %).
+
+    The device API has no GET for DOD, so the last set value is stored in
+    config_entry.options so it survives Home Assistant restarts.
+    """
 
     _attr_has_entity_name = True
     _attr_name = "Depth of Discharge"
@@ -36,7 +40,8 @@ class MarstekDODNumber(CoordinatorEntity[MarstekCoordinator], NumberEntity):
         super().__init__(coordinator)
         self._attr_unique_id = f"{coordinator.entry_id}_dod"
         self._attr_device_info = coordinator.device_info
-        self._dod_value: int | None = None
+        # Restore last known value from persistent options
+        self._dod_value: int | None = coordinator.entry.options.get(OPT_DOD)
 
     @property
     def native_value(self) -> int | None:
@@ -46,4 +51,9 @@ class MarstekDODNumber(CoordinatorEntity[MarstekCoordinator], NumberEntity):
         int_value = int(value)
         await self.coordinator.client.set_dod(int_value)
         self._dod_value = int_value
+        # Persist so the value survives HA restart
+        self.hass.config_entries.async_update_entry(
+            self.coordinator.entry,
+            options={**self.coordinator.entry.options, OPT_DOD: int_value},
+        )
         self.async_write_ha_state()

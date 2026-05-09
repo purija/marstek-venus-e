@@ -1,4 +1,4 @@
-"""Config flow for Marstek Venus integration."""
+"""Config flow and options flow for Marstek Venus integration."""
 from __future__ import annotations
 
 import logging
@@ -7,14 +7,24 @@ from typing import Any
 import voluptuous as vol
 
 from homeassistant import config_entries
+from homeassistant.core import callback
 from homeassistant.data_entry_flow import FlowResult
 
 from .client import MarstekClient, MarstekError
-from .const import CONF_HOST, CONF_PORT, DEFAULT_PORT, DEFAULT_TIMEOUT, DOMAIN
+from .const import (
+    CONF_HOST,
+    CONF_PORT,
+    CONF_SCAN_INTERVAL,
+    CONF_TIMEOUT,
+    DEFAULT_PORT,
+    DEFAULT_SCAN_INTERVAL,
+    DEFAULT_TIMEOUT,
+    DOMAIN,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
-_SCHEMA = vol.Schema({
+_SETUP_SCHEMA = vol.Schema({
     vol.Required(CONF_HOST): str,
     vol.Optional(CONF_PORT, default=DEFAULT_PORT): vol.All(int, vol.Range(min=1, max=65535)),
 })
@@ -23,6 +33,11 @@ _SCHEMA = vol.Schema({
 class MarstekConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     VERSION = 1
 
+    @staticmethod
+    @callback
+    def async_get_options_flow(config_entry: config_entries.ConfigEntry) -> MarstekOptionsFlow:
+        return MarstekOptionsFlow(config_entry)
+
     async def async_step_user(self, user_input: dict[str, Any] | None = None) -> FlowResult:
         errors: dict[str, str] = {}
 
@@ -30,7 +45,7 @@ class MarstekConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             client = MarstekClient(
                 host=user_input[CONF_HOST],
                 port=user_input[CONF_PORT],
-                timeout=DEFAULT_TIMEOUT,
+                timeout=float(DEFAULT_TIMEOUT),
             )
             try:
                 # ES.GetStatus is the most reliable endpoint on all firmware versions
@@ -67,6 +82,37 @@ class MarstekConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         return self.async_show_form(
             step_id="user",
-            data_schema=_SCHEMA,
+            data_schema=_SETUP_SCHEMA,
             errors=errors,
+        )
+
+
+class MarstekOptionsFlow(config_entries.OptionsFlow):
+    """Options flow: configure timeout and polling interval."""
+
+    def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
+        self._entry = config_entry
+
+    async def async_step_init(self, user_input: dict[str, Any] | None = None) -> FlowResult:
+        opts = self._entry.options
+
+        if user_input is not None:
+            return self.async_create_entry(title="", data={
+                **opts,
+                CONF_TIMEOUT: user_input[CONF_TIMEOUT],
+                CONF_SCAN_INTERVAL: user_input[CONF_SCAN_INTERVAL],
+            })
+
+        return self.async_show_form(
+            step_id="init",
+            data_schema=vol.Schema({
+                vol.Optional(
+                    CONF_TIMEOUT,
+                    default=opts.get(CONF_TIMEOUT, DEFAULT_TIMEOUT),
+                ): vol.All(int, vol.Range(min=5, max=30)),
+                vol.Optional(
+                    CONF_SCAN_INTERVAL,
+                    default=opts.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL),
+                ): vol.All(int, vol.Range(min=15, max=300)),
+            }),
         )

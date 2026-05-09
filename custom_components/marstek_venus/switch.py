@@ -7,7 +7,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import DOMAIN
+from .const import DOMAIN, OPT_LED
 from .coordinator import MarstekCoordinator
 
 
@@ -21,7 +21,11 @@ async def async_setup_entry(
 
 
 class MarstekLEDSwitch(CoordinatorEntity[MarstekCoordinator], SwitchEntity):
-    """LED panel switch. State is tracked locally — no GET exists on the API."""
+    """LED panel switch.
+
+    The device API has no GET for LED state, so the last set value is stored
+    in config_entry.options so it survives Home Assistant restarts.
+    """
 
     _attr_has_entity_name = True
     _attr_name = "LED Panel"
@@ -30,7 +34,8 @@ class MarstekLEDSwitch(CoordinatorEntity[MarstekCoordinator], SwitchEntity):
         super().__init__(coordinator)
         self._attr_unique_id = f"{coordinator.entry_id}_led"
         self._attr_device_info = coordinator.device_info
-        self._is_on: bool = False
+        # Restore last known state from persistent options (default: off)
+        self._is_on: bool = coordinator.entry.options.get(OPT_LED, False)
 
     @property
     def is_on(self) -> bool:
@@ -39,9 +44,17 @@ class MarstekLEDSwitch(CoordinatorEntity[MarstekCoordinator], SwitchEntity):
     async def async_turn_on(self, **kwargs) -> None:
         await self.coordinator.client.set_led(True)
         self._is_on = True
+        self.hass.config_entries.async_update_entry(
+            self.coordinator.entry,
+            options={**self.coordinator.entry.options, OPT_LED: True},
+        )
         self.async_write_ha_state()
 
     async def async_turn_off(self, **kwargs) -> None:
         await self.coordinator.client.set_led(False)
         self._is_on = False
+        self.hass.config_entries.async_update_entry(
+            self.coordinator.entry,
+            options={**self.coordinator.entry.options, OPT_LED: False},
+        )
         self.async_write_ha_state()

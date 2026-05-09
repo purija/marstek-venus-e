@@ -18,5 +18,20 @@
     "abort": {
       "already_configured": "This device is already configured."
     }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Marstek Venus Options",
+        "data": {
+          "timeout": "UDP Timeout (seconds)",
+          "scan_interval": "Poll Interval (seconds)"
+        },
+        "data_description": {
+          "timeout": "How long to wait for a device response. Increase if sensors go unavailable frequently (default: 10 s).",
+          "scan_interval": "How often to poll the device (default: 30 s)."
+        }
+      }
+    }
   }
 }
