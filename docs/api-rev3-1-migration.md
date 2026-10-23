@@ -8,7 +8,7 @@ Stand des Codes: Controls sind optional, Client mit gemeinsamer Warteschlange (s
 
 - **Das Protokoll ist kompatibel.** Alle Methodennamen, das Request/Response-Format, die Fehlercodes, `ES.SetMode`, `ES.GetMode` und die Discovery sind unverändert. Es gibt keinen Breaking Change im Transport.
 - **Eine Sensor-Einheit hat sich geändert** (`total_pv_energy`). Für ein Venus E ist das vermutlich ohne Wirkung, weil es laut Kap. 4.1 keine PV-Komponente hat. Das muss am Gerät geprüft werden.
-- **DOD, LED und Bluetooth-Lock gehören jetzt zur Komponente „SYS“** und sind bei Venus C/E und A/D erst ab **Firmware ≥ 150** verfügbar. Das Gerät im README läuft mit **Firmware 148**. Ob die Controls dort überhaupt funktionieren, ist offen und der wichtigste Punkt dieser Analyse.
+- **DOD, LED und Bluetooth-Lock gehören jetzt zur Komponente „SYS“** und sind bei Venus C/E und A/D erst ab **Firmware ≥ 150** verfügbar. Das Gerät im README läuft laut README mit **Firmware 148**. Die Probe hat gezeigt, dass `DOD.SET` an diesem Gerät mit `set_result: true` antwortet (Q5). `Led.Ctrl` und `Ble.Adv` sind ungetestet, und die Firmware-Nummer ließ sich nicht auslesen (Q2).
 - **Zwei neue gefährliche Befehle** (`Set.Ver`, `Reset.Factory`). Empfehlung: nicht in Home Assistant einbauen.
 - **Neues Gerät Venus E mini** mit eigenen Grenzen und einem zusätzlichen Parameter bei Manual.
 
@@ -37,16 +37,32 @@ Auffällig im Dokument selbst, aber ohne Folgen für uns: Beispiele schreiben `"
 
 Die Spezifikation beantwortet diese Punkte nicht. Alle lassen sich mit `src/probe.py` klären. Das Skript sendet nur Lese-Abfragen, mit optionaler Ausnahme `--check-dod`.
 
-| Frage | Warum offen | Wie klären | Betrifft |
-|---|---|---|---|
-| **Q1** Liefert dein Gerät `total_pv_energy` schon in 0.01 kWh? | Das Dokument nennt keine Firmware-Version für die Änderung. | `probe.py` zeigt den Rohwert. Beim Venus E ist er vermutlich immer 0; dann ist die Frage für dich gegenstandslos. | Schritt 2 |
-| **Q2** Welche Firmware meldet das Gerät? | `Marstek.GetDevice` liefert `ver`, wir lesen es bisher nirgends. Das Beispiel in der Spezifikation zeigt `ver: 111`. Ob `ver` der Firmware-Nummer aus Kap. 4 entspricht, ist eine Annahme. | `probe.py` zeigt `device` und `ver`. Der Aufruf kann bei Unicast mit „Parse error“ scheitern (siehe `config_flow.py`). | Schritt 3 |
-| **Q3** Meldet `ES.GetMode` im UPS-Modus `UPS` oder `Ups`? | Die Spezifikation schreibt in der Tabelle „Ups“, in den Beispielen „UPS“. Die Select-Entität vergleicht exakt mit `UPS`. Das war schon in Rev 2.0 so. | In der App einmal UPS setzen, `probe.py` laufen lassen. | Schritt 4 |
-| **Q4** Antwortet `PV.GetStatus` am Venus E? | Laut Spezifikation nur A/D. Erwartet wird `-32601`. | `probe.py` | nur Dokumentation |
-| **Q5** Existieren `DOD.SET`, `Led.Ctrl`, `Ble.Adv` auf Firmware 148? | Rev 3.1 sagt „ab Firmware ≥ 150“. Rev 2.0 nannte keine Einschränkung. | `probe.py <ip> --check-dod <aktueller Wert>`. Das **schreibt** den Wert, den du in der App eingestellt hast, ändert den Zustand also nicht. `-32601` bedeutet „nicht verfügbar“. | Schritt 4 |
-| **Q6** Bleiben CT-Werte in `EM.GetStatus` auch in Manual/Passive/UPS gültig? | `ES.GetMode` kennzeichnet CT-Felder nur für Auto und AI als gültig. Für `EM.GetStatus` steht das nicht dabei. | `probe.py` je einmal pro Modus (Modus in der App setzen). | Schritt 2, optional |
+| Frage | Warum offen | Wie klären | Betrifft | Ergebnis (zwei Probe-Läufe am 23.10.2026, Modus Auto) |
+|---|---|---|---|---|
+| **Q1** Liefert dein Gerät `total_pv_energy` schon in 0.01 kWh? | Das Dokument nennt keine Firmware-Version für die Änderung. | `probe.py` zeigt den Rohwert. Beim Venus E ist er vermutlich immer 0; dann ist die Frage für dich gegenstandslos. | Schritt 2 | **Gegenstandslos.** Rohwert 0, wie erwartet. Die Skalierung lässt sich an diesem Gerät nicht prüfen. |
+| **Q2** Welche Firmware meldet das Gerät? | `Marstek.GetDevice` liefert `ver`, wir lesen es bisher nirgends. Das Beispiel in der Spezifikation zeigt `ver: 111`. Ob `ver` der Firmware-Nummer aus Kap. 4 entspricht, ist eine Annahme. | `probe.py` zeigt `device` und `ver`. Der Aufruf kann bei Unicast mit „Parse error“ scheitern (siehe `config_flow.py`). | Schritt 3 | **Offen.** `Marstek.GetDevice` scheiterte per Unicast: Lauf 1 Timeout (10 s), Lauf 2 `-32700 Parse error`. `ver` ist unbekannt. Die „Firmware 148“ in der README stammt nicht aus der Probe. |
+| **Q3** Meldet `ES.GetMode` im UPS-Modus `UPS` oder `Ups`? | Die Spezifikation schreibt in der Tabelle „Ups“, in den Beispielen „UPS“. Die Select-Entität vergleicht exakt mit `UPS`. Das war schon in Rev 2.0 so. | In der App einmal UPS setzen, `probe.py` laufen lassen. | Schritt 4 | **Offen.** Das Gerät stand auf `Auto`. Für die Klärung muss in der App UPS gesetzt werden. |
+| **Q4** Antwortet `PV.GetStatus` am Venus E? | Laut Spezifikation nur A/D. Erwartet wird `-32601`. | `probe.py` | nur Dokumentation | **Bestätigt.** Fehler `-32601` „Method not found“. |
+| **Q5** Existieren `DOD.SET`, `Led.Ctrl`, `Ble.Adv` auf Firmware 148? | Rev 3.1 sagt „ab Firmware ≥ 150“. Rev 2.0 nannte keine Einschränkung. | `probe.py <ip> --check-dod <aktueller Wert>`. Das **schreibt** den Wert, den du in der App eingestellt hast, ändert den Zustand also nicht. `-32601` bedeutet „nicht verfügbar“. | Schritt 4 | **DOD.SET verfügbar.** Lauf 2 mit `--check-dod 60` (der in der App eingestellte Wert): Antwort `{"id": 0, "set_result": true}`. Damit existiert SYS auch ohne bekannte Firmware ≥ 150. `Led.Ctrl` und `Ble.Adv` wurden nicht getestet. Die Firmware-Nummer ist unbekannt (Q2). Dass der Wert in der App unverändert 60 % bleibt, muss von Hand geprüft werden (es gibt kein GET). |
+| **Q6** Bleiben CT-Werte in `EM.GetStatus` auch in Manual/Passive/UPS gültig? | `ES.GetMode` kennzeichnet CT-Felder nur für Auto und AI als gültig. Für `EM.GetStatus` steht das nicht dabei. | `probe.py` je einmal pro Modus (Modus in der App setzen). | Schritt 2, optional | **Teilweise.** Nur Auto gemessen. Dort weichen die Quellen ab (siehe Abschnitt 3.1). Manual, Passive und UPS sind offen. In Lauf 2 lief `ES.GetMode` in ein Timeout, ein Vergleich war dort nicht möglich. |
 
-Hypothese, nicht belegt: Falls Q5 auf Firmware 148 `-32601` ergibt, wären DOD- und LED-Befehle dort wirkungslos. Dann sind sie nicht die Ursache von Störungen, sondern liefen bisher ins Leere und lieferten falsche Erfolgsmeldungen (diese Lücke ist mit dem letzten Umbau geschlossen: `set_result: false` und Fehlerantworten werden jetzt gemeldet).
+### 3.1 Zusatzfunde aus der Probe
+
+- **CT-Werte: `ES.GetMode` und `EM.GetStatus` widersprechen sich.** Im Modus Auto meldet `ES.GetMode` `ct_state: 0` und überall 0. `EM.GetStatus` meldet im selben Lauf `ct_state: 1` mit Werten (Phase A -231 W, B -46 W, C 274 W, gesamt -2 W). Die Spezifikation nennt CT-Felder in `ES.GetMode` für Auto als gültig. Das trifft an diesem Gerät nicht zu. Die CT-Sensoren lasen bisher aus `ES.GetMode` und zeigten deshalb dauerhaft 0. **Behoben:** `sensor.py` liest die sechs CT-Sensoren jetzt aus `EM.GetStatus`. Ob die Sensoren in Home Assistant die erwarteten Werte zeigen, ist noch nicht geprüft.
+- **CT-Energien:** `input_energy` und `output_energy` sind in beiden Quellen 0. Der Faktor 0.1 lässt sich damit nicht prüfen.
+- **Timeouts treten zufällig auf, nicht methodenspezifisch.** Vergleich der beiden Läufe:
+
+  | Methode | Lauf 1 | Lauf 2 |
+  |---|---|---|
+  | `Marstek.GetDevice` | Timeout (10 s) | `-32700 Parse error` (5,6 s) |
+  | `ES.GetMode` | ok | **Timeout (10 s)** |
+  | `Wifi.GetStatus` | Timeout (10 s) | ok |
+  | `BLE.GetStatus` | Timeout (10 s) | ok |
+
+  Eine frühere Fassung dieses Dokuments nannte `Marstek.GetDevice`, `Wifi.GetStatus` und `BLE.GetStatus` als Methoden, die per Unicast nicht antworten. Das war falsch. Zwei Läufe zeigen kein Muster, das auf bestimmte Methoden hindeutet. Das passt zur Beobachtung in der README, dass das Gerät Anfragen verwirft, solange es noch beschäftigt ist. Ein Zusammenhang mit dem Known Issue „Polling führt zu Crashes“ ist damit möglich, aber nicht belegt. `ES.GetMode` ist Teil des regulären Polls, ein Timeout dort betrifft die Integration also (der Coordinator behält dann den letzten Wert).
+- **Wechselnde Antwortzeiten:** In Lauf 1 brauchte `ES.GetStatus` 4,74 s, in Lauf 2 0,29 s. Die übrigen Abfragen lagen meist bei 0,1 bis 0,3 s, `Wifi.GetStatus` bei 1,4 s.
+
+Hypothese zu Q5 (widerlegt für DOD): Die Befürchtung war, DOD- und LED-Befehle liefen auf älterer Firmware ins Leere (`-32601`). `DOD.SET` wurde am Gerät mit `set_result: true` beantwortet. Für `Led.Ctrl` und `Ble.Adv` gibt es noch kein Ergebnis. Die Lücke bei falschen Erfolgsmeldungen ist mit dem letzten Umbau geschlossen: `set_result: false` und Fehlerantworten werden jetzt gemeldet.
 
 ## 4. Schrittweiser Umsetzungsplan
 
@@ -71,6 +87,7 @@ Jeder Schritt ist eigenständig lieferbar und testbar. Schritt 1 ist ein Gate f�
 - Dateien: `sensor.py` (`MarstekSensorEntityDescription.factor` existiert bereits), ggf. `const.py`.
 - Test: Sensor-Test mit Rohwert 1234 → erwartet 12340 Wh (bzw. unverändert, je nach Q1). Ist das Ergebnis aus Q1 „0 und Venus E“, reicht das Deaktivieren, der Faktor entfällt.
 - Risiko gering. Fehler wären nur ein falscher Zahlenwert im Energie-Dashboard.
+- **Stand nach Schritt 1:** Q1 ergab Rohwert 0 beim Venus E. Empfehlung: die Variante „Sensor standardmäßig deaktivieren“ wählen und keinen Faktor einbauen. Die Skalierung lässt sich an diesem Gerät nicht prüfen.
 
 ### Schritt 3: Modell- und Firmware-Erkennung (abhängig von Q2)
 - Ziel: Wissen, welches Modell und welche Firmware das Gerät hat, ohne dass ein Fehlschlag den Start verhindert.
@@ -108,7 +125,7 @@ Jeder Schritt ist eigenständig lieferbar und testbar. Schritt 1 ist ein Gate f�
 | Risiko | Wahrscheinlichkeit | Wirkung | Gegenmaßnahme |
 |---|---|---|---|
 | `total_pv_energy` falsch skaliert | mittel bei Geräten mit PV, bei Venus E vermutlich irrelevant | falscher Zahlenwert | Schritt 2 mit Q1 |
-| Controls wirkungslos auf Firmware 148 | offen (Q5) | falsche Erwartung des Nutzers | klare Fehlermeldung, Hinweis in den Optionen (Schritt 4) |
+| Controls wirkungslos auf älterer Firmware | für DOD an diesem Gerät widerlegt (Q5), für LED/BLE ungetestet, für andere Geräte offen | falsche Erwartung des Nutzers | klare Fehlermeldung, Hinweis in den Optionen (Schritt 4) |
 | `ver` ≠ Firmware-Nummer | offen (Q2) | falsche Sperre/Freigabe | nur Hinweis, kein hartes Sperren |
 | `Ups`/`UPS` | offen (Q3) | Modus zeigt „unbekannt“ | Schritt 4 |
 | Versehentliches `Reset.Factory`/`Set.Ver` | nur falls eingebaut | Datenverlust, falsche Leistungsklasse | nicht einbauen (Schritt 5) |

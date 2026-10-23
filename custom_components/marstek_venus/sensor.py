@@ -134,10 +134,12 @@ SENSOR_DESCRIPTIONS: tuple[MarstekSensorEntityDescription, ...] = (
         device_class=SensorDeviceClass.ENERGY,
         state_class=SensorStateClass.TOTAL_INCREASING,
     ),
-    # ── CT / Energy meter (ES.GetMode — energy values require ×0.1) ──────────
+    # ── CT / Energy meter (EM.GetStatus — energy values require ×0.1) ────────
+    # ES.GetMode also carries CT fields, but only in Auto/AI mode and it
+    # reported ct_state 0 / all zeros while EM.GetStatus had live values.
     MarstekSensorEntityDescription(
         key="ct_total_power",
-        source="es_mode",
+        source="em_status",
         value_key="total_power",
         name="CT Total Power",
         native_unit_of_measurement=UnitOfPower.WATT,
@@ -146,7 +148,7 @@ SENSOR_DESCRIPTIONS: tuple[MarstekSensorEntityDescription, ...] = (
     ),
     MarstekSensorEntityDescription(
         key="ct_a_power",
-        source="es_mode",
+        source="em_status",
         value_key="a_power",
         name="CT Phase A Power",
         native_unit_of_measurement=UnitOfPower.WATT,
@@ -156,7 +158,7 @@ SENSOR_DESCRIPTIONS: tuple[MarstekSensorEntityDescription, ...] = (
     ),
     MarstekSensorEntityDescription(
         key="ct_b_power",
-        source="es_mode",
+        source="em_status",
         value_key="b_power",
         name="CT Phase B Power",
         native_unit_of_measurement=UnitOfPower.WATT,
@@ -166,7 +168,7 @@ SENSOR_DESCRIPTIONS: tuple[MarstekSensorEntityDescription, ...] = (
     ),
     MarstekSensorEntityDescription(
         key="ct_c_power",
-        source="es_mode",
+        source="em_status",
         value_key="c_power",
         name="CT Phase C Power",
         native_unit_of_measurement=UnitOfPower.WATT,
@@ -177,7 +179,7 @@ SENSOR_DESCRIPTIONS: tuple[MarstekSensorEntityDescription, ...] = (
     # CT energies: raw value × 0.1 = Wh
     MarstekSensorEntityDescription(
         key="ct_input_energy",
-        source="es_mode",
+        source="em_status",
         value_key="input_energy",
         factor=0.1,
         name="CT Input Energy",
@@ -187,7 +189,7 @@ SENSOR_DESCRIPTIONS: tuple[MarstekSensorEntityDescription, ...] = (
     ),
     MarstekSensorEntityDescription(
         key="ct_output_energy",
-        source="es_mode",
+        source="em_status",
         value_key="output_energy",
         factor=0.1,
         name="CT Output Energy",
