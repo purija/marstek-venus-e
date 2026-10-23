@@ -5,3 +5,5 @@ __pycache__/
 .env
 CLAUDE.md
 .claude
+# Probe output (masked, but device-specific)
+output/probe-*.json

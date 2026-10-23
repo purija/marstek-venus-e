@@ -146,7 +146,7 @@ No dependencies beyond the Python standard library.
 
 ## API Reference
 
-The device uses a JSON-RPC-style protocol over UDP. Full documentation is in [`input/MarstekDeviceOpenApi (1).pdf`](input/).
+The device uses a JSON-RPC-style protocol over UDP. Full documentation is in [`input/MarstekDeviceOpenApi-rev3-1.pdf`](input/MarstekDeviceOpenApi-rev3-1.pdf).
 
 Quick reference:
 
