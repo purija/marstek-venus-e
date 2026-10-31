@@ -6,8 +6,8 @@ Usage:
     python3 src/example.py <device-ip> [port]
 
 Example:
-    python3 src/example.py 192.168.1.232
-    python3 src/example.py 192.168.1.232 49200
+    python3 src/example.py 192.168.x.xxx
+    python3 src/example.py 192.168.x.xxx 49200
 """
 from __future__ import annotations
 

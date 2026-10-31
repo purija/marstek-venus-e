@@ -34,7 +34,7 @@ Local-network integration for the **Marstek Venus E / C / D** battery storage sy
 1. Open HACS in Home Assistant.
 2. Go to **Integrations** → click the three-dot menu (⋮) → **Custom repositories**.
 3. Add:
-   - **Repository**: `https://github.com/YOUR_USERNAME/marstek-venus`
+   - **Repository**: `https://github.com/purija/marstek-venus-e`
    - **Category**: Integration
 4. Click **Add**.
 5. Search for **Marstek Venus** in HACS and click **Download**.
