@@ -4,11 +4,15 @@ from __future__ import annotations
 from unittest.mock import AsyncMock, patch
 
 import pytest
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, State
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
-from pytest_homeassistant_custom_component.common import MockConfigEntry
+from pytest_homeassistant_custom_component.common import (
+    MockConfigEntry,
+    mock_restore_cache,
+    mock_restore_cache_with_extra_data,
+)
 
 from custom_components.marstek_venus.client import MarstekError
 from custom_components.marstek_venus.const import (
@@ -343,3 +347,190 @@ async def test_mode_select_shows_new_mode_immediately(hass: HomeAssistant) -> No
         {"entity_id": "select.venus_e_operating_mode", "option": "UPS"}, blocking=True)
     client.set_mode.assert_awaited_once_with("UPS")
     assert hass.states.get("select.venus_e_operating_mode").state == "UPS"
+
+
+# ── Controls only write on an explicit action ─────────────────────────────────
+# Values set in the Marstek app must never be overwritten by Home Assistant:
+# nothing may be sent at setup, restart, reload or poll. Only a user action on
+# the control writes, once, with exactly the chosen value.
+
+WRITE_METHODS = ("set_dod", "set_led", "set_mode", "set_passive_mode",
+                 "set_manual_mode", "set_ble_advertising")
+ALL_CONTROLS = {CONF_ENABLE_MODE: True, CONF_ENABLE_DOD: True, CONF_ENABLE_LED: True}
+
+
+def _assert_nothing_written(client: AsyncMock) -> None:
+    for name in WRITE_METHODS:
+        getattr(client, name).assert_not_awaited()
+    client.request.assert_not_awaited()
+
+
+def _write_spy_client(**kwargs) -> AsyncMock:
+    """Fake client whose write methods are all spies (unless given explicitly)."""
+    for name in WRITE_METHODS:
+        kwargs.setdefault(name, AsyncMock())
+    return _fake_client(**kwargs)
+
+
+async def test_setup_with_all_controls_writes_nothing(hass: HomeAssistant) -> None:
+    client = _write_spy_client()
+    await _setup(hass, _entry(ALL_CONTROLS), client)
+    _assert_nothing_written(client)
+
+
+async def test_setup_with_restored_values_does_not_resend_them(hass: HomeAssistant) -> None:
+    """A restored DOD/LED value is only displayed, never pushed to the device."""
+    # one call only: every mock_restore_cache* call replaces the whole cache
+    mock_restore_cache_with_extra_data(hass, [
+        (State("number.venus_e_depth_of_discharge", "55"),
+         {"native_max_value": 88, "native_min_value": 30, "native_step": 1,
+          "native_unit_of_measurement": "%", "native_value": 55}),
+        (State("switch.venus_e_led_panel", "off"), {}),
+    ])
+    client = _write_spy_client()
+    await _setup(hass, _entry(ALL_CONTROLS), client)
+    assert hass.states.get("number.venus_e_depth_of_discharge").state == "55"
+    assert hass.states.get("switch.venus_e_led_panel").state == "off"
+    _assert_nothing_written(client)
+
+
+async def test_polling_writes_nothing(hass: HomeAssistant) -> None:
+    client = _write_spy_client()
+    entry = _entry(ALL_CONTROLS)
+    await _setup(hass, entry, client)
+    coordinator = hass.data[DOMAIN][entry.entry_id]
+    for _ in range(3):
+        await coordinator.async_refresh()
+    _assert_nothing_written(client)
+
+
+async def test_reload_writes_nothing(hass: HomeAssistant) -> None:
+    client = _write_spy_client()
+    entry = _entry(ALL_CONTROLS)
+    await _setup(hass, entry, client)
+    with patch(CLIENT, return_value=client):
+        assert await hass.config_entries.async_reload(entry.entry_id)
+        await hass.async_block_till_done()
+    _assert_nothing_written(client)
+
+
+async def test_changing_options_writes_nothing(hass: HomeAssistant) -> None:
+    client = _write_spy_client()
+    entry = _entry(ALL_CONTROLS)
+    await _setup(hass, entry, client)
+    with patch(CLIENT, return_value=client):
+        hass.config_entries.async_update_entry(
+            entry, options={**ALL_CONTROLS, CONF_ENABLE_LED: False})
+        await hass.async_block_till_done()
+    _assert_nothing_written(client)
+
+
+async def test_mode_select_follows_the_app_without_writing(hass: HomeAssistant) -> None:
+    """The mode is readable, so a change made in the app shows up; nothing is written."""
+    client = _write_spy_client(es_mode={"mode": "Auto"})
+    entry = _entry({CONF_ENABLE_MODE: True})
+    await _setup(hass, entry, client)
+    assert hass.states.get("select.venus_e_operating_mode").state == "Auto"
+
+    client.get_es_mode.return_value = {"mode": "AI"}      # user switches mode in the app
+    await hass.data[DOMAIN][entry.entry_id].async_refresh()
+    assert hass.states.get("select.venus_e_operating_mode").state == "AI"
+    _assert_nothing_written(client)
+
+
+async def test_dod_and_led_keep_shown_value_when_app_changes_them(hass: HomeAssistant) -> None:
+    """DOD and LED have no GET: a poll must not touch the assumed value."""
+    client = _write_spy_client()
+    entry = _entry(ALL_CONTROLS)
+    await _setup(hass, entry, client)
+    await hass.services.async_call(
+        "number", "set_value",
+        {"entity_id": "number.venus_e_depth_of_discharge", "value": 60}, blocking=True)
+    await hass.services.async_call(
+        "switch", "turn_on", {"entity_id": "switch.venus_e_led_panel"}, blocking=True)
+    await hass.data[DOMAIN][entry.entry_id].async_refresh()
+    assert hass.states.get("number.venus_e_depth_of_discharge").state == "60"
+    assert hass.states.get("switch.venus_e_led_panel").state == "on"
+
+
+# ── An explicit action writes exactly once, with the chosen value ─────────────
+
+async def test_set_dod_writes_once_with_chosen_value(hass: HomeAssistant) -> None:
+    client = _write_spy_client()
+    await _setup(hass, _entry(ALL_CONTROLS), client)
+    await hass.services.async_call(
+        "number", "set_value",
+        {"entity_id": "number.venus_e_depth_of_discharge", "value": 42}, blocking=True)
+    client.set_dod.assert_awaited_once_with(42)
+    for name in ("set_led", "set_mode", "set_passive_mode", "set_manual_mode"):
+        getattr(client, name).assert_not_awaited()
+
+
+async def test_led_write_does_not_touch_other_controls(hass: HomeAssistant) -> None:
+    client = _write_spy_client()
+    await _setup(hass, _entry(ALL_CONTROLS), client)
+    await hass.services.async_call(
+        "switch", "turn_off", {"entity_id": "switch.venus_e_led_panel"}, blocking=True)
+    client.set_led.assert_awaited_once_with(False)
+    for name in ("set_dod", "set_mode", "set_passive_mode", "set_manual_mode"):
+        getattr(client, name).assert_not_awaited()
+
+
+async def test_led_off_then_on_sends_both_values(hass: HomeAssistant) -> None:
+    client = _write_spy_client()
+    await _setup(hass, _entry({CONF_ENABLE_LED: True}), client)
+    for service in ("turn_off", "turn_on", "turn_off"):
+        await hass.services.async_call(
+            "switch", service, {"entity_id": "switch.venus_e_led_panel"}, blocking=True)
+    assert [c.args[0] for c in client.set_led.await_args_list] == [False, True, False]
+
+
+# ── A rejected or failed write must not change the shown state ────────────────
+
+@pytest.mark.parametrize("error", [MarstekError("rejected"), TimeoutError()])
+@pytest.mark.parametrize(("before", "service"), [("on", "turn_off"), ("off", "turn_on")])
+async def test_failed_led_write_keeps_previous_state(
+    hass: HomeAssistant, error, before: str, service: str
+) -> None:
+    """Also after the next poll: that is when a wrongly remembered value would show."""
+    mock_restore_cache(hass, [State("switch.venus_e_led_panel", before)])
+    client = _write_spy_client(set_led=AsyncMock(side_effect=error))
+    entry = _entry({CONF_ENABLE_LED: True})
+    await _setup(hass, entry, client)
+    assert hass.states.get("switch.venus_e_led_panel").state == before
+    with pytest.raises(HomeAssistantError):
+        await hass.services.async_call(
+            "switch", service, {"entity_id": "switch.venus_e_led_panel"}, blocking=True)
+    assert hass.states.get("switch.venus_e_led_panel").state == before
+    await hass.data[DOMAIN][entry.entry_id].async_refresh()
+    assert hass.states.get("switch.venus_e_led_panel").state == before
+
+
+@pytest.mark.parametrize("error", [MarstekError("rejected"), TimeoutError()])
+async def test_failed_dod_write_keeps_previous_value(hass: HomeAssistant, error) -> None:
+    mock_restore_cache_with_extra_data(hass, [
+        (State("number.venus_e_depth_of_discharge", "70"),
+         {"native_max_value": 88, "native_min_value": 30, "native_step": 1,
+          "native_unit_of_measurement": "%", "native_value": 70}),
+    ])
+    client = _write_spy_client(set_dod=AsyncMock(side_effect=error))
+    entry = _entry({CONF_ENABLE_DOD: True})
+    await _setup(hass, entry, client)
+    with pytest.raises(HomeAssistantError):
+        await hass.services.async_call(
+            "number", "set_value",
+            {"entity_id": "number.venus_e_depth_of_discharge", "value": 50}, blocking=True)
+    assert hass.states.get("number.venus_e_depth_of_discharge").state == "70"
+    # the next poll rewrites the state: a wrongly remembered 50 would show up here
+    await hass.data[DOMAIN][entry.entry_id].async_refresh()
+    assert hass.states.get("number.venus_e_depth_of_discharge").state == "70"
+
+
+async def test_failed_mode_write_keeps_previous_mode(hass: HomeAssistant) -> None:
+    client = _write_spy_client(set_mode=AsyncMock(side_effect=MarstekError("rejected")))
+    await _setup(hass, _entry({CONF_ENABLE_MODE: True}), client)
+    with pytest.raises(HomeAssistantError):
+        await hass.services.async_call(
+            "select", "select_option",
+            {"entity_id": "select.venus_e_operating_mode", "option": "UPS"}, blocking=True)
+    assert hass.states.get("select.venus_e_operating_mode").state == "Auto"
