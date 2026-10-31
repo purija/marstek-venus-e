@@ -265,3 +265,81 @@ async def test_led_switch(hass: HomeAssistant, service: str, expected: bool, sta
         "switch", service, {"entity_id": "switch.venus_e_led_panel"}, blocking=True)
     client.set_led.assert_awaited_once_with(expected)
     assert hass.states.get("switch.venus_e_led_panel").state == state
+
+
+# ── Polling: which endpoints are queried ──────────────────────────────────────
+
+async def test_es_mode_not_polled_without_mode_control(hass: HomeAssistant) -> None:
+    client = _fake_client()
+    await _setup(hass, _entry(), client)
+    client.get_es_status.assert_awaited_once()
+    client.get_em_status.assert_awaited_once()
+    client.get_bat_status.assert_awaited_once()
+    client.get_es_mode.assert_not_awaited()
+
+
+async def test_es_mode_polled_with_mode_control(hass: HomeAssistant) -> None:
+    client = _fake_client()
+    await _setup(hass, _entry({CONF_ENABLE_MODE: True}), client)
+    client.get_es_mode.assert_awaited_once()
+
+
+async def test_es_mode_still_polled_for_legacy_entry_with_select(hass: HomeAssistant) -> None:
+    """The M1 migration must run before the coordinator decides what to poll."""
+    entry = _entry()
+    entry.add_to_hass(hass)
+    _preregister(hass, entry, "select", "operating_mode", "venus_e_operating_mode")
+    client = _fake_client(es_mode={"mode": "AI"})
+    await _setup(hass, entry, client)
+    client.get_es_mode.assert_awaited_once()
+    assert hass.states.get("select.venus_e_operating_mode").state == "AI"
+
+
+async def test_enabling_mode_control_starts_polling_es_mode(hass: HomeAssistant) -> None:
+    client = _fake_client()
+    entry = _entry()
+    await _setup(hass, entry, client)
+    client.get_es_mode.assert_not_awaited()
+    with patch(CLIENT, return_value=client):
+        hass.config_entries.async_update_entry(entry, options={CONF_ENABLE_MODE: True})
+        await hass.async_block_till_done()
+    client.get_es_mode.assert_awaited()
+    assert hass.states.get("select.venus_e_operating_mode") is not None
+
+
+# ── Coordinator failure handling ──────────────────────────────────────────────
+
+async def test_partial_failure_keeps_last_value(hass: HomeAssistant) -> None:
+    client = _fake_client()
+    entry = _entry()
+    await _setup(hass, entry, client)
+    assert hass.states.get("sensor.venus_e_battery_temperature").state == "21.5"
+
+    client.get_bat_status.side_effect = TimeoutError()
+    coordinator = hass.data[DOMAIN][entry.entry_id]
+    await coordinator.async_refresh()
+    assert coordinator.last_update_success
+    assert hass.states.get("sensor.venus_e_battery_temperature").state == "21.5"
+
+
+async def test_total_failure_marks_entities_unavailable(hass: HomeAssistant) -> None:
+    client = _fake_client()
+    entry = _entry()
+    await _setup(hass, entry, client)
+
+    for name in ("get_es_status", "get_em_status", "get_bat_status"):
+        getattr(client, name).side_effect = TimeoutError()
+    coordinator = hass.data[DOMAIN][entry.entry_id]
+    await coordinator.async_refresh()
+    assert not coordinator.last_update_success
+    assert hass.states.get("sensor.venus_e_battery_temperature").state == "unavailable"
+
+
+async def test_mode_select_shows_new_mode_immediately(hass: HomeAssistant) -> None:
+    client = _fake_client(set_mode=AsyncMock())
+    await _setup(hass, _entry({CONF_ENABLE_MODE: True}), client)
+    await hass.services.async_call(
+        "select", "select_option",
+        {"entity_id": "select.venus_e_operating_mode", "option": "UPS"}, blocking=True)
+    client.set_mode.assert_awaited_once_with("UPS")
+    assert hass.states.get("select.venus_e_operating_mode").state == "UPS"

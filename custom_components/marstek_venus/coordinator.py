@@ -12,11 +12,13 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 
 from .client import MarstekClient
 from .const import (
+    CONF_ENABLE_MODE,
     CONF_HOST,
     CONF_PORT,
     CONF_SCAN_INTERVAL,
     CONF_TIMEOUT,
     CONF_VER,
+    DEFAULT_ENABLE_CONTROLS,
     DEFAULT_SCAN_INTERVAL,
     DEFAULT_TIMEOUT,
     DOMAIN,
@@ -26,16 +28,19 @@ from .const import (
 _LOGGER = logging.getLogger(__name__)
 
 # Spacing between requests is enforced by MarstekClient (shared with commands).
-_QUERIES: list[tuple[str, str]] = [
-    ("es_status", "get_es_status"),   # always reliable — must be first
-    ("em_status", "get_em_status"),
-    ("es_mode",   "get_es_mode"),
-    ("bat_status", "get_bat_status"), # intermittent on fw148 — place last
+# (data key, client method, option that must be on for the query to run or None)
+_QUERIES: list[tuple[str, str, str | None]] = [
+    ("es_status", "get_es_status", None),   # always reliable — must be first
+    ("em_status", "get_em_status", None),
+    # Only the optional operating mode select reads this. Without it the query
+    # would cost a request plus the 1 s gap on every poll for nothing.
+    ("es_mode", "get_es_mode", CONF_ENABLE_MODE),
+    ("bat_status", "get_bat_status", None),  # intermittent on fw148 — place last
 ]
 
 
 class MarstekCoordinator(DataUpdateCoordinator[dict[str, Any]]):
-    """Polls ES/Bat/EM status sequentially.
+    """Polls ES/EM/Bat status (and ES.GetMode if the mode select is on) in turn.
 
     The VenusE firmware discards requests that arrive while it is still
     processing a previous one, so all queries are sent one at a time with
@@ -57,6 +62,11 @@ class MarstekCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         )
         self.entry = entry
         self.entry_id = entry.entry_id
+        self._queries = [
+            (key, method)
+            for key, method, option in _QUERIES
+            if option is None or entry.options.get(option, DEFAULT_ENABLE_CONTROLS)
+        ]
         self.client = MarstekClient(
             host=entry.data[CONF_HOST],
             port=entry.data[CONF_PORT],
@@ -76,7 +86,7 @@ class MarstekCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         data: dict[str, Any] = {}
         any_success = False
 
-        for key, method_name in _QUERIES:
+        for key, method_name in self._queries:
             try:
                 result = await getattr(self.client, method_name)()
                 data[key] = result
