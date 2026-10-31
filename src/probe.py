@@ -1,19 +1,28 @@
 #!/usr/bin/env python3
 """
-Read-only probe for the Marstek Venus Open API (Rev 3.1 migration, step 1).
+Probe for the Marstek Venus Open API (Rev 3.1 migration, step 1).
 
-Sends only GET-style queries (one at a time, 1 s apart) and records for every
-method whether the device answers, with what, or with which error code. The
-result clarifies the open questions in docs/api-rev3-1-migration.md (Q1-Q5).
+By default sends only GET-style queries (one at a time, 1 s apart) and records
+for every method whether the device answers, with what, or with which error
+code. The result clarifies the open questions in docs/api-rev3-1-migration.md
+(Q1-Q5).
 
 Usage:
     python3 src/probe.py <device-ip> [port] [--timeout 10] [--out FILE]
     python3 src/probe.py <device-ip> --check-dod 80   # optional, writes!
+    python3 src/probe.py <device-ip> --check-led on   # optional, writes!
 
 --check-dod N sends DOD.SET with value N. Pass the value that is *currently*
 set in the Marstek app, so the device state does not change. It answers the
 question whether the SYS component (DOD/LED/BLE) exists on this firmware
 (error -32601 "Method not found" = not available).
+
+--check-led on|off sends Led.Ctrl. There is no GET for the LED, so the effect
+can only be seen on the device itself:
+  * pass the state the LED is in now: nothing changes, only "accepted or not"
+    is tested;
+  * pass the opposite state: the LED should switch, which proves the command
+    works. Run the probe again with the previous state to restore it.
 
 Identifiers (MACs, IPs, SSID) are masked in the console output and in the file.
 """
@@ -114,12 +123,33 @@ def findings(by_method: dict[str, dict[str, Any]]) -> list[str]:
 
     dod = by_method.get("DOD.SET")
     if dod:
-        dcode = (dod.get("error") or {}).get("code") if isinstance(dod.get("error"), dict) else None
-        verdict = {"ok": "SYS available", "error": f"error {dcode} ({'SYS NOT available' if dcode == -32601 else 'see message'})"}
-        lines.append(f"Q5 DOD.SET: {verdict.get(dod['status'], dod['status'])}")
+        lines.append(f"Q5 DOD.SET: {_write_verdict(dod)}")
     else:
         lines.append("Q5 DOD.SET not tested (use --check-dod N)")
+
+    led = by_method.get("Led.Ctrl")
+    if led:
+        state = "on" if led["params"]["state"] else "off"
+        lines.append(f"Q5 Led.Ctrl {state}: {_write_verdict(led)}")
+        if led["status"] == "ok" and led["result"].get("set_result") is True:
+            lines.append("   Check the LED on the device: no GET exists, so only you can confirm the effect.")
+    else:
+        lines.append("Q5 Led.Ctrl not tested (use --check-led on|off)")
     return lines
+
+
+def _write_verdict(entry: dict[str, Any]) -> str:
+    """One-line verdict for a write command (DOD.SET, Led.Ctrl)."""
+    status = entry["status"]
+    if status == "ok":
+        if entry["result"].get("set_result") is True:
+            return "accepted (set_result true), SYS available"
+        return f"answered but NOT accepted: {entry['result']}"
+    if status == "error":
+        err = entry.get("error")
+        code = err.get("code") if isinstance(err, dict) else None
+        return f"error {code} ({'SYS NOT available' if code == -32601 else 'see message'})"
+    return status
 
 
 def main() -> int:
@@ -129,6 +159,7 @@ def main() -> int:
     ap.add_argument("--timeout", type=float, default=10.0)
     ap.add_argument("--out", type=Path, default=None, help="result file (default: output/probe-<time>.json)")
     ap.add_argument("--check-dod", type=int, metavar="N", help="also send DOD.SET N (writes!), N in 30-88")
+    ap.add_argument("--check-led", choices=("on", "off"), help="also send Led.Ctrl (writes! changes the LED if it differs)")
     args = ap.parse_args()
 
     if args.check_dod is not None and not 30 <= args.check_dod <= 88:
@@ -137,12 +168,15 @@ def main() -> int:
     calls = list(QUERIES)
     if args.check_dod is not None:
         calls.append(("DOD.SET", {"value": args.check_dod}))
+    if args.check_led is not None:
+        calls.append(("Led.Ctrl", {"state": 1 if args.check_led == "on" else 0}))
 
     results: list[dict[str, Any]] = []
     for i, (method, params) in enumerate(calls, start=1):
         if i > 1:
             time.sleep(GAP)
         res = call(args.host, args.port, args.timeout, i, method, params)
+        res["params"] = params
         results.append(res)
         detail = res.get("error") or ""
         print(f"{method:<20} {res['status']:<8} {res['seconds']:>5}s  {mask(detail) if detail else ''}")
