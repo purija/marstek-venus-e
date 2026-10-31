@@ -25,11 +25,17 @@
         "title": "Marstek Venus Options",
         "data": {
           "timeout": "UDP Timeout (seconds)",
-          "scan_interval": "Poll Interval (seconds)"
+          "scan_interval": "Poll Interval (seconds)",
+          "enable_mode_control": "Enable operating mode control",
+          "enable_dod_control": "Enable depth of discharge control",
+          "enable_led_control": "Enable LED panel control"
         },
         "data_description": {
           "timeout": "How long to wait for a device response. Increase if sensors go unavailable frequently (default: 10 s).",
-          "scan_interval": "How often to poll the device (default: 30 s)."
+          "scan_interval": "How often to poll the device (default: 30 s).",
+          "enable_mode_control": "Adds a select to switch between Auto, AI and UPS. Off by default: the integration then only reads from the device.",
+          "enable_dod_control": "Adds a number to set the depth of discharge (30–88 %). Needs firmware 150 or newer on Venus C/E (Open API Rev 3.1). The device cannot report its DOD, so the shown value is the last one set here.",
+          "enable_led_control": "Adds a switch for the LED panel. Needs firmware 150 or newer on Venus C/E (Open API Rev 3.1). The device cannot report the LED state, so the shown state is the last one set here."
         }
       }
     }

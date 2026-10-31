@@ -10,9 +10,7 @@ Local-network integration for the **Marstek Venus E / C / D** battery storage sy
 ## Features
 
 - **18 sensor entities**: battery SOC, power flows (solar, grid, off-grid, battery), cumulative energy, CT per-phase power
-- **Operating mode select**: Auto / AI / Manual / Passive / UPS
-- **Depth of Discharge (DOD)** number entity (30–88 %)
-- **LED panel switch**
+- **Optional controls** (off by default, enable in the integration options): operating mode select (Auto / AI / UPS), Depth of Discharge (DOD) number (30–88 %), LED panel switch
 - Polling every 30 seconds, fully local
 - Tested on: **Marstek Venus E 3.0** (firmware 148)
 
@@ -59,7 +57,7 @@ Local-network integration for the **Marstek Venus E / C / D** battery storage sy
 1. Go to **Settings → Devices & Services → Add Integration**.
 2. Search for **Marstek Venus**.
 3. Enter:
-   - **IP Address**: the device IP (e.g. `192.168.1.118`)
+   - **IP Address**: the device IP (e.g. `192.168.x.xxx`)
    - **UDP Port**: `30000` (or whatever you configured in the app)
 4. Click **Submit** — the integration will connect and discover the device.
 
@@ -88,13 +86,17 @@ Local-network integration for the **Marstek Venus E / C / D** battery storage sy
 | CT Input Energy | Wh | cumulative, ×0.1 factor |
 | CT Output Energy | Wh | cumulative, ×0.1 factor |
 
-### Controls
+### Controls (optional)
+
+By default the integration **only reads** from the device and never sends a command. Each control has to be enabled individually under **Settings → Devices & Services → Marstek Venus → Configure**. Disabling a control removes its entity again.
 
 | Entity | Type | Notes |
 |---|---|---|
-| Operating Mode | Select | Auto / AI / Manual / Passive / UPS |
-| Depth of Discharge | Number | 30–88 %, write-only (no GET in API) |
-| LED Panel | Switch | write-only (no GET in API) |
+| Operating Mode | Select | Auto / AI / UPS. Manual and Passive are not offered (they need time slots / target power); a mode set in the app shows as unknown |
+| Depth of Discharge | Number | 30–88 %. Write-only: shows the last value set from HA (restored after restart, never re-sent) |
+| LED Panel | Switch | Write-only: shows the last state set from HA (restored after restart, never re-sent) |
+
+Commands share one queue with polling (at least 1 s between requests, so they never collide with a running poll), are retried once on timeout, and show an error in the UI if the device rejects them or does not answer. A command issued during a poll waits until that poll has finished, which can take a few seconds.
 
 ---
 
@@ -102,7 +104,7 @@ Local-network integration for the **Marstek Venus E / C / D** battery storage sy
 
 The integration exposes the following sensors for use in the HA **Energy Dashboard**:
 
-- **Solar production**: `Total Solar Energy`
+- **Solar production**: `Total Solar Energy` (disabled by default, enable it if your device has PV)
 - **Grid consumption**: `Total Grid Input Energy`
 - **Grid return**: `Total Grid Output Energy`
 - **Battery storage**: `Battery State of Charge` + `Battery Available Capacity`
@@ -115,8 +117,11 @@ The integration exposes the following sensors for use in the HA **Energy Dashboa
 |---|---|
 | `Bat.GetStatus` intermittent | On firmware 148 this endpoint occasionally times out. The sensor falls back to "unavailable" and recovers on the next poll. |
 | `ES.GetMode` / `ES.GetMode` slow | Requires a 1 s pause after the previous request; the firmware processes commands sequentially. |
-| DOD & LED state unknown after restart | The device API has no GET command for these — values are only tracked while HA is running. |
-| Manual mode not exposed in select | Requires time-slot parameters. Use a HA automation with the `marstek_venus.set_manual_mode` service call (not yet implemented). |
+| DOD & LED state is an assumption | The device API has no GET command for these — HA shows the last value it set itself. Changes made in the Marstek app are not visible. |
+| Manual / Passive mode not exposed in select | Both require parameters (time slots / target power). Not implemented as service calls yet. |
+| DOD / LED need firmware ≥ 150 (per API Rev 3.1) | Rev 3.1 moves DOD, LED and Bluetooth into the `SYS` component, available on Venus C/E from firmware 150. `DOD.SET` was accepted on the test device, whose firmware number could not be read back; `Led.Ctrl` and `Ble.Adv` are untested. If the device answers "Method not found", the control shows a "not supported by this device or firmware" error. |
+| `Total Solar Energy` disabled by default | The Venus E has no PV input (raw value is always 0). Rev 3.1 changed this counter to 0.01 kWh without naming a firmware, so the scaling could not be verified and no factor is applied. Enable the sensor manually if your device reports PV energy. |
+| Device firmware shown as "unknown" | `Marstek.GetDevice` often fails over unicast. If it succeeds during setup, its `ver` is shown as the device's software version. Entries created earlier have no version until re-added. |
 
 ---
 
@@ -136,8 +141,8 @@ For testing without Home Assistant, a standalone script is included:
 
 ```bash
 # Requires Python 3.10+
-python3 src/example.py 192.168.1.118
-python3 src/example.py 192.168.1.118 49200   # custom port
+python3 src/example.py 192.168.x.xxx
+python3 src/example.py 192.168.x.xxx 49200   # custom port
 ```
 
 No dependencies beyond the Python standard library.

@@ -1,7 +1,6 @@
 """DataUpdateCoordinator for Marstek Venus."""
 from __future__ import annotations
 
-import asyncio
 import logging
 from datetime import timedelta
 from typing import Any
@@ -17,6 +16,7 @@ from .const import (
     CONF_PORT,
     CONF_SCAN_INTERVAL,
     CONF_TIMEOUT,
+    CONF_VER,
     DEFAULT_SCAN_INTERVAL,
     DEFAULT_TIMEOUT,
     DOMAIN,
@@ -25,9 +25,7 @@ from .const import (
 
 _LOGGER = logging.getLogger(__name__)
 
-# Device processes requests sequentially — send one at a time with a pause.
-_QUERY_DELAY = 1.0
-
+# Spacing between requests is enforced by MarstekClient (shared with commands).
 _QUERIES: list[tuple[str, str]] = [
     ("es_status", "get_es_status"),   # always reliable — must be first
     ("em_status", "get_em_status"),
@@ -64,11 +62,13 @@ class MarstekCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             port=entry.data[CONF_PORT],
             timeout=float(timeout),
         )
+        ver = entry.data.get(CONF_VER)
         self.device_info = DeviceInfo(
             identifiers={(DOMAIN, entry.data.get("ble_mac") or entry.data[CONF_HOST])},
             manufacturer=MANUFACTURER,
             model=entry.data.get("device_name", "Marstek Venus"),
             name=entry.title,
+            sw_version=str(ver) if ver is not None else None,
         )
 
     async def _async_update_data(self) -> dict[str, Any]:
@@ -76,9 +76,7 @@ class MarstekCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         data: dict[str, Any] = {}
         any_success = False
 
-        for i, (key, method_name) in enumerate(_QUERIES):
-            if i > 0:
-                await asyncio.sleep(_QUERY_DELAY)
+        for key, method_name in _QUERIES:
             try:
                 result = await getattr(self.client, method_name)()
                 data[key] = result

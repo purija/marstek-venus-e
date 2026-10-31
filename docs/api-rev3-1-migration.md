@@ -66,6 +66,8 @@ Hypothese zu Q5 (widerlegt für DOD): Die Befürchtung war, DOD- und LED-Befehle
 
 ## 4. Schrittweiser Umsetzungsplan
 
+**Umsetzungsstand (31.10.2026):** Schritte 0–6 sind im Code umgesetzt, 29 Tests laufen durch (`pytest`, siehe `tests/`). Abweichungen vom Plan stehen jeweils beim Schritt. Nicht erledigt: Commit der Änderungen und Prüfung am echten Gerät (Q2, Q3, Q6, `Led.Ctrl`, `Ble.Adv`).
+
 Jeder Schritt ist eigenständig lieferbar und testbar. Schritt 1 ist ein Gate für 2–4.
 
 ### Schritt 0: Repo aufräumen (kein Verhalten ändert sich)
@@ -97,6 +99,7 @@ Jeder Schritt ist eigenständig lieferbar und testbar. Schritt 1 ist ein Gate f�
 - Hilfsfunktion `supports_sys(entry) -> bool | None`: `True`/`False` bei bekannter Firmware, `None` bei unbekannter.
 - Bestehende Config-Entries haben kein `ver`. Entweder beim Setup einmalig nachholen (ein zusätzlicher Request, gleiche Warteschlange) oder bis zur Neukonfiguration als unbekannt behandeln.
 - Test: Config-Flow mit und ohne `ver`; Entry ohne `ver` startet weiterhin.
+- **Umgesetzt:** `ver` wird im Config-Entry gespeichert (`CONF_VER`) und als `sw_version` angezeigt. Bestehende Entries bleiben bis zur Neukonfiguration „unbekannt“, ein Nachholen beim Setup gibt es nicht (zusätzlicher Request bei ohnehin instabilem Polling). `supports_sys()` wurde **nicht** gebaut: Q2 ist offen, `ver` ist nur eine Annahme für die Firmware-Nummer, und DOD hat an einem Gerät trotzdem funktioniert. Es gibt keine Stelle, die den Wert auswerten würde.
 
 ### Schritt 4: Controls robust machen (abhängig von Q3 und Q5)
 - DOD, LED und BLE hängen an SYS. Wenn das Gerät `-32601` meldet, soll die UI das verständlich sagen („vom Gerät/der Firmware nicht unterstützt“) statt „command failed“.
@@ -104,12 +107,14 @@ Jeder Schritt ist eigenständig lieferbar und testbar. Schritt 1 ist ein Gate f�
 - Optionen: Beschreibung der Schalter um „benötigt Firmware ≥ 150“ ergänzen (`translations/en.json`). Ist `supports_sys()` aus Schritt 3 `False`, den Hinweis im Options-Dialog hervorheben. Kein hartes Sperren, solange `ver` nur eine Annahme ist.
 - `select.py`: Modus-Vergleich unabhängig von Groß-/Kleinschreibung (`Ups` vs. `UPS`), falls Q3 das bestätigt. Sonst zeigt die Entität im UPS-Modus „unbekannt“.
 - Test: Fake-Client wirft `MarstekError(code=-32601)` → `HomeAssistantError` mit der neuen Meldung; Modus `Ups` wird als `UPS` erkannt.
+- **Umgesetzt:** Meldung bei `-32601`, Hinweis „Firmware 150“ in den Options-Beschreibungen von DOD und LED, Modusvergleich ohne Groß-/Kleinschreibung. Der Hinweis im Options-Dialog wird nicht hervorgehoben (hing an `supports_sys()`, siehe Schritt 3). Q3 bleibt am Gerät zu prüfen, der Code deckt beide Schreibweisen ab.
 
 ### Schritt 5: Client erweitern, ohne neue Entitäten
 - `set_manual_mode`: optionaler Parameter `manual_set` (nur E mini) und Prüfung von `time_num` (0–9, bei E mini 0–5). Der Client lehnt ungültige Werte vor dem Senden ab (wie bei `set_mode` für Manual/Passive).
 - `Set.Ver` und `Reset.Factory`: **bewusst nicht** in `custom_components/` aufnehmen. Beide verändern das Gerät dauerhaft (Leistungsklasse bzw. Konfiguration) und gehören nicht in eine Oberfläche, die versehentlich bedient werden kann. Falls gewünscht: nur in einem eigenen Skript unter `src/` mit ausdrücklicher Bestätigung.
 - `Ble.Adv` bleibt wie bisher ohne Entität.
 - Test: Client-Tests gegen den simulierten UDP-Server (wie beim letzten Umbau).
+- **Umgesetzt:** `manual_set` und `time_num`-Prüfung in `set_manual_mode`. Die E-mini-Grenze (0–5) greift nur, wenn `manual_set` übergeben wird, weil der Client das Modell nicht kennt. `Set.Ver` und `Reset.Factory` sind nicht enthalten.
 
 ### Schritt 6: Tests ins Repo, Doku, Version
 - Die bisherigen Tests liegen nur im Job-Verzeichnis. Nach `tests/` übernehmen (Client-Test und HA-Integrationstest, inklusive `pytest.ini` mit `asyncio_mode = auto`).

@@ -13,9 +13,14 @@ from homeassistant.data_entry_flow import FlowResult
 from .client import MarstekClient, MarstekError
 from .const import (
     CONF_HOST,
+    CONF_ENABLE_DOD,
+    CONF_ENABLE_LED,
+    CONF_ENABLE_MODE,
     CONF_PORT,
     CONF_SCAN_INTERVAL,
     CONF_TIMEOUT,
+    CONF_VER,
+    DEFAULT_ENABLE_CONTROLS,
     DEFAULT_PORT,
     DEFAULT_SCAN_INTERVAL,
     DEFAULT_TIMEOUT,
@@ -66,6 +71,9 @@ class MarstekConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     device_info = {}
                 ble_mac = device_info.get("ble_mac", "")
                 device_name = device_info.get("device", "Marstek Venus")
+                # "ver" is shown as sw_version only; it is unclear whether it equals
+                # the firmware number from the API doc, so nothing is gated on it.
+                ver = device_info.get("ver")
 
                 await self.async_set_unique_id(ble_mac or user_input[CONF_HOST])
                 self._abort_if_unique_id_configured()
@@ -77,6 +85,7 @@ class MarstekConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         CONF_PORT: user_input[CONF_PORT],
                         "device_name": device_name,
                         "ble_mac": ble_mac,
+                        CONF_VER: ver,
                     },
                 )
 
@@ -88,7 +97,7 @@ class MarstekConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
 
 class MarstekOptionsFlow(config_entries.OptionsFlow):
-    """Options flow: configure timeout and polling interval."""
+    """Options flow: timeout, polling interval and optional write controls."""
 
     def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
         self._entry = config_entry
@@ -97,11 +106,7 @@ class MarstekOptionsFlow(config_entries.OptionsFlow):
         opts = self._entry.options
 
         if user_input is not None:
-            return self.async_create_entry(title="", data={
-                **opts,
-                CONF_TIMEOUT: user_input[CONF_TIMEOUT],
-                CONF_SCAN_INTERVAL: user_input[CONF_SCAN_INTERVAL],
-            })
+            return self.async_create_entry(title="", data={**opts, **user_input})
 
         return self.async_show_form(
             step_id="init",
@@ -114,5 +119,17 @@ class MarstekOptionsFlow(config_entries.OptionsFlow):
                     CONF_SCAN_INTERVAL,
                     default=opts.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL),
                 ): vol.All(int, vol.Range(min=15, max=300)),
+                vol.Optional(
+                    CONF_ENABLE_MODE,
+                    default=opts.get(CONF_ENABLE_MODE, DEFAULT_ENABLE_CONTROLS),
+                ): bool,
+                vol.Optional(
+                    CONF_ENABLE_DOD,
+                    default=opts.get(CONF_ENABLE_DOD, DEFAULT_ENABLE_CONTROLS),
+                ): bool,
+                vol.Optional(
+                    CONF_ENABLE_LED,
+                    default=opts.get(CONF_ENABLE_LED, DEFAULT_ENABLE_CONTROLS),
+                ): bool,
             }),
         )

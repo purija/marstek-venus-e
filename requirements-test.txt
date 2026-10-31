@@ -1,0 +1,4 @@
+# Test dependencies: pip install -r requirements-test.txt && pytest
+# The plugin pins the matching Home Assistant version itself (tested with
+# 0.13.375 -> homeassistant 2026.10.4, Python 3.14).
+pytest-homeassistant-custom-component==0.13.375

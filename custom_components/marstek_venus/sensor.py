@@ -102,6 +102,10 @@ SENSOR_DESCRIPTIONS: tuple[MarstekSensorEntityDescription, ...] = (
         state_class=SensorStateClass.MEASUREMENT,
     ),
     # ── Cumulative energy (ES.GetStatus — values are in Wh directly) ──────────
+    # Rev 3.1 changed total_pv_energy to 0.01 kWh (1 count = 10 Wh), but gives no
+    # firmware version for it. The Venus E has no PV input (raw value is always 0,
+    # see docs/api-rev3-1-migration.md Q1), so the scaling cannot be verified:
+    # no factor is applied and the sensor is disabled by default.
     MarstekSensorEntityDescription(
         key="total_pv_energy",
         source="es_status",
@@ -109,6 +113,7 @@ SENSOR_DESCRIPTIONS: tuple[MarstekSensorEntityDescription, ...] = (
         native_unit_of_measurement=UnitOfEnergy.WATT_HOUR,
         device_class=SensorDeviceClass.ENERGY,
         state_class=SensorStateClass.TOTAL_INCREASING,
+        entity_registry_enabled_default=False,
     ),
     MarstekSensorEntityDescription(
         key="total_grid_output_energy",
