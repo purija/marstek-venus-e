@@ -2,6 +2,7 @@
 
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/hacs/integration)
 [![HA Version](https://img.shields.io/badge/Home%20Assistant-2023.x%2B-blue)](https://www.home-assistant.io/)
+[![Buy me a coffee](https://img.shields.io/badge/Buy%20me%20a%20coffee-PayPal-0070BA?logo=paypal&logoColor=white)](https://www.paypal.com/paypalme/purija)
 
 Local-network integration for the **Marstek Venus E / C / D** battery storage systems. Communicates directly with the device over **UDP** — no cloud, no Marstek account required after initial setup.
 
@@ -165,6 +166,16 @@ Quick reference:
 // Set depth of discharge
 {"id": 3, "method": "DOD.SET", "params": {"value": 80}}
 ```
+
+---
+
+## Support
+
+Your battery runs on sunshine, this project runs on coffee. ☕
+
+If the integration saves you some grid power (or some nerves), a small coffee is a nice way to say thanks. It is completely voluntary and the integration stays free either way.
+
+[![Buy me a coffee via PayPal](https://img.shields.io/badge/Buy%20me%20a%20coffee-PayPal-0070BA?style=for-the-badge&logo=paypal&logoColor=white)](https://www.paypal.com/paypalme/purija)
 
 ---
 
