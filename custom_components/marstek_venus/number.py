@@ -7,7 +7,7 @@ from homeassistant.const import PERCENTAGE
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import CONF_ENABLE_DOD, DEFAULT_ENABLE_CONTROLS, DOMAIN, UID_DOD
+from .const import CONF_ENABLE_DOD, DEFAULT_ENABLE_CONTROLS, DOMAIN, LEGACY_OPT_DOD, UID_DOD
 from .coordinator import MarstekCoordinator
 from .entity import MarstekControlEntity
 
@@ -47,6 +47,8 @@ class MarstekDODNumber(MarstekControlEntity, RestoreNumber):
         await super().async_added_to_hass()
         if (last := await self.async_get_last_number_data()) and last.native_value is not None:
             self._value = int(last.native_value)
+        elif (legacy := self.coordinator.entry.options.get(LEGACY_OPT_DOD)) is not None:
+            self._value = int(legacy)
 
     @property
     def native_value(self) -> int | None:

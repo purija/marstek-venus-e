@@ -10,7 +10,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.restore_state import RestoreEntity
 
-from .const import CONF_ENABLE_LED, DEFAULT_ENABLE_CONTROLS, DOMAIN, UID_LED
+from .const import CONF_ENABLE_LED, DEFAULT_ENABLE_CONTROLS, DOMAIN, LEGACY_OPT_LED, UID_LED
 from .coordinator import MarstekCoordinator
 from .entity import MarstekControlEntity
 
@@ -45,6 +45,9 @@ class MarstekLEDSwitch(MarstekControlEntity, SwitchEntity, RestoreEntity):
         if (last := await self.async_get_last_state()) is not None:
             if last.state in (STATE_ON, "off"):
                 self._is_on = last.state == STATE_ON
+                return
+        if (legacy := self.coordinator.entry.options.get(LEGACY_OPT_LED)) is not None:
+            self._is_on = bool(legacy)
 
     @property
     def is_on(self) -> bool | None:

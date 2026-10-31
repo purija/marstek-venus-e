@@ -11,7 +11,7 @@ Local-network integration for the **Marstek Venus E / C / D** battery storage sy
 ## Features
 
 - **18 sensor entities**: battery SOC, power flows (solar, grid, off-grid, battery), cumulative energy, CT per-phase power
-- **Optional controls** (off by default, enable in the integration options): operating mode select (Auto / AI / UPS), Depth of Discharge (DOD) number (30–88 %), LED panel switch
+- **Optional controls** (off by default for new installations, enable in the integration options): operating mode select (Auto / AI / UPS), Depth of Discharge (DOD) number (30–88 %), LED panel switch. When updating from a version where these were always on, existing controls stay enabled; switch them off in the options if you do not want them.
 - Polling every 30 seconds, fully local
 - Tested on: **Marstek Venus E 3.0** (firmware 148)
 

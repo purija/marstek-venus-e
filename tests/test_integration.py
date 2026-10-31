@@ -7,11 +7,13 @@ import pytest
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers import entity_registry as er
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.marstek_venus.client import MarstekError
 from custom_components.marstek_venus.const import (
     CONF_ENABLE_DOD,
+    CONF_ENABLE_LED,
     CONF_ENABLE_MODE,
     DOMAIN,
 )
@@ -168,3 +170,98 @@ async def test_other_errors_keep_generic_message(hass: HomeAssistant) -> None:
         await hass.services.async_call(
             "number", "set_value",
             {"entity_id": "number.venus_e_depth_of_discharge", "value": 60}, blocking=True)
+
+
+# ── Migration of installations from before the opt-in controls ───────────────
+
+def _preregister(hass: HomeAssistant, entry: MockConfigEntry, domain: str, suffix: str, object_id: str):
+    """Create a registry entry like an older version of the integration did."""
+    return er.async_get(hass).async_get_or_create(
+        domain, DOMAIN, f"{entry.entry_id}_{suffix}",
+        config_entry=entry, suggested_object_id=object_id,
+    )
+
+
+async def test_legacy_entry_keeps_existing_controls(hass: HomeAssistant) -> None:
+    """No enable_* options, but the entities exist: they must survive the update."""
+    entry = _entry()
+    entry.add_to_hass(hass)
+    sel = _preregister(hass, entry, "select", "operating_mode", "venus_e_operating_mode")
+    num = _preregister(hass, entry, "number", "dod", "venus_e_depth_of_discharge")
+    sw = _preregister(hass, entry, "switch", "led", "venus_e_led_panel")
+    await _setup(hass, entry, _fake_client())
+
+    assert entry.options[CONF_ENABLE_MODE] is True
+    assert entry.options[CONF_ENABLE_DOD] is True
+    assert entry.options[CONF_ENABLE_LED] is True
+    registry = er.async_get(hass)
+    for ent in (sel, num, sw):
+        assert registry.async_get(ent.entity_id) is not None   # same entity_id kept
+        assert hass.states.get(ent.entity_id) is not None
+
+
+async def test_legacy_migration_only_touches_controls_with_entries(hass: HomeAssistant) -> None:
+    entry = _entry()
+    entry.add_to_hass(hass)
+    _preregister(hass, entry, "number", "dod", "venus_e_depth_of_discharge")
+    await _setup(hass, entry, _fake_client())
+
+    assert entry.options == {CONF_ENABLE_DOD: True}
+    assert hass.states.get("select.venus_e_operating_mode") is None
+    assert hass.states.get("switch.venus_e_led_panel") is None
+
+
+async def test_control_switched_off_is_not_resurrected(hass: HomeAssistant) -> None:
+    """An explicit False beats a leftover registry entry and removes it."""
+    entry = _entry({CONF_ENABLE_MODE: False})
+    entry.add_to_hass(hass)
+    sel = _preregister(hass, entry, "select", "operating_mode", "venus_e_operating_mode")
+    await _setup(hass, entry, _fake_client())
+
+    assert entry.options[CONF_ENABLE_MODE] is False
+    assert er.async_get(hass).async_get(sel.entity_id) is None
+
+
+async def test_new_installation_has_no_controls_and_no_options(hass: HomeAssistant) -> None:
+    entry = _entry()
+    await _setup(hass, entry, _fake_client())
+    assert entry.options == {}
+
+
+async def test_migration_does_not_reload_the_entry(hass: HomeAssistant) -> None:
+    entry = _entry()
+    entry.add_to_hass(hass)
+    _preregister(hass, entry, "number", "dod", "venus_e_depth_of_discharge")
+    client = _fake_client()
+    await _setup(hass, entry, client)
+    # one setup = one first refresh = one ES.GetStatus; a reload would poll again
+    assert client.get_es_status.await_count == 1
+
+
+async def test_legacy_dod_and_led_options_are_shown(hass: HomeAssistant) -> None:
+    """Old versions kept the last value in options; show it until the entity has a state."""
+    entry = _entry({CONF_ENABLE_DOD: True, CONF_ENABLE_LED: True, "dod": 70, "led": True})
+    await _setup(hass, entry, _fake_client())
+    assert hass.states.get("number.venus_e_depth_of_discharge").state == "70"
+    assert hass.states.get("switch.venus_e_led_panel").state == "on"
+
+
+async def test_dod_value_is_shown_after_set(hass: HomeAssistant) -> None:
+    client = _fake_client(set_dod=AsyncMock())
+    await _setup(hass, _entry({CONF_ENABLE_DOD: True}), client)
+    await hass.services.async_call(
+        "number", "set_value",
+        {"entity_id": "number.venus_e_depth_of_discharge", "value": 55}, blocking=True)
+    client.set_dod.assert_awaited_once_with(55)
+    assert hass.states.get("number.venus_e_depth_of_discharge").state == "55"
+
+
+@pytest.mark.parametrize(("service", "expected", "state"),
+                         [("turn_on", True, "on"), ("turn_off", False, "off")])
+async def test_led_switch(hass: HomeAssistant, service: str, expected: bool, state: str) -> None:
+    client = _fake_client(set_led=AsyncMock())
+    await _setup(hass, _entry({CONF_ENABLE_LED: True}), client)
+    await hass.services.async_call(
+        "switch", service, {"entity_id": "switch.venus_e_led_panel"}, blocking=True)
+    client.set_led.assert_awaited_once_with(expected)
+    assert hass.states.get("switch.venus_e_led_panel").state == state

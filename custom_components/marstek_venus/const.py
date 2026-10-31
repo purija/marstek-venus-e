@@ -19,6 +19,12 @@ DEFAULT_SCAN_INTERVAL = 30
 DEFAULT_TIMEOUT = 10  # Bat.GetStatus braucht ~8-9 s auf Firmware 148
 DEFAULT_ENABLE_CONTROLS = False
 
+# Option keys of versions that stored the last DOD / LED value in the config
+# entry. Only read, as a display fallback; the current entities restore their
+# state from Home Assistant instead.
+LEGACY_OPT_DOD = "dod"
+LEGACY_OPT_LED = "led"
+
 # unique_id suffixes (<entry_id>_<suffix>) of the control entities
 UID_MODE = "operating_mode"
 UID_DOD = "dod"
