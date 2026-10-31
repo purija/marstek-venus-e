@@ -1,6 +1,9 @@
 # Marstek Venus — Home Assistant Integration
 
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/hacs/integration)
+[![Release](https://img.shields.io/github/v/release/purija/marstek-venus-e)](https://github.com/purija/marstek-venus-e/releases)
+[![License: MIT](https://img.shields.io/github/license/purija/marstek-venus-e)](LICENSE)
+[![Last commit](https://img.shields.io/github/last-commit/purija/marstek-venus-e)](https://github.com/purija/marstek-venus-e/commits/main)
 [![HA Version](https://img.shields.io/badge/Home%20Assistant-2023.x%2B-blue)](https://www.home-assistant.io/)
 [![Buy me a coffee](https://img.shields.io/badge/Buy%20me%20a%20coffee-PayPal-0070BA?logo=paypal&logoColor=white)](https://www.paypal.com/paypalme/purija)
 
