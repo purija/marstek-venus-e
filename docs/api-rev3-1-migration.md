@@ -66,7 +66,7 @@ Hypothese zu Q5 (widerlegt für DOD): Die Befürchtung war, DOD- und LED-Befehle
 
 ## 4. Schrittweiser Umsetzungsplan
 
-**Umsetzungsstand (31.10.2026):** Schritte 0–6 sind im Code umgesetzt, 29 Tests laufen durch (`pytest`, siehe `tests/`). Abweichungen vom Plan stehen jeweils beim Schritt. Nicht erledigt: Commit der Änderungen und Prüfung am echten Gerät (Q2, Q3, Q6, `Led.Ctrl`, `Ble.Adv`).
+**Umsetzungsstand (31.10.2026):** Schritte 0–6 sind umgesetzt und committet, 45 Tests laufen durch (`pytest`, siehe `tests/`). Abweichungen vom Plan stehen jeweils beim Schritt. Aus einem anschließenden Review kamen zwei Korrekturen: Bestandsnutzer behalten ihre Controls beim Update (Migration beim Setup), und `ES.GetMode` wird nur noch abgefragt, wenn der Modus-Select aktiv ist. Nicht erledigt: Prüfung am echten Gerät (Q2, Q3, Q6, `Led.Ctrl`, `Ble.Adv`).
 
 Jeder Schritt ist eigenständig lieferbar und testbar. Schritt 1 ist ein Gate für 2–4.
 
